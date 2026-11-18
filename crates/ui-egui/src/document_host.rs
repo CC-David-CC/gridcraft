@@ -400,7 +400,7 @@ impl SheetApp {
             gridcraft_engine::Mode::Ready
         };
         self.after_engine();
-        Ok(json!({"id":id}))
+        Ok(json!({"id":id,"saved":false}))
     }
 }
 
@@ -527,12 +527,13 @@ mod tests {
         assert_eq!(app.host_state(), revision);
         let mut restored = hosted();
         let before = restored.host_state();
-        control(
+        let outcome = control(
             &mut restored,
             "document.restoreSnapshot",
             json!({"version":snapshot["version"],"data":snapshot["data"],"expectedRevision":before["hostDocumentState"]["documents"][0]["revision"]}),
         )
         .unwrap();
+        assert_eq!(outcome, json!({"id":restored.session.active().unwrap().uid,"saved":false}));
         assert_eq!(restored.editor.as_ref().unwrap().text, "=A1*7");
         assert!(restored.session.active().unwrap().is_dirty());
         restored.run("file.saveAs", json!({"path":"Documents/Recovered.xlsx"})).unwrap();
