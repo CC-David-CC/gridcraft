@@ -8,8 +8,11 @@ const digest = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value
 const validName = name => typeof name === 'string' && name.length > 0 && name.length <= 255 && !name.startsWith('.') && !/[\x00-\x1f/\\]/.test(name);
 const base64 = bytes => { const parts = []; for (let i = 0; i < bytes.length; i += 24576) { let text = ''; for (const value of bytes.subarray(i, i + 24576)) text += String.fromCharCode(value); parts.push(btoa(text)); } return parts.join(''); };
 
-
-
+function operationFailureReason(error) {
+  const message = error.message || 'Verify the account file before retrying.';
+  if (error.outcome === 'unknown') return message + ' The server outcome is unknown; check the file before retrying.';
+  return message;
+}
 export function mount({instanceId, sessionId, resource = null, imported = null, template = 'blank', recoveryAsCopy = false, profileId = '', files, authority, authorize, recovery = null,
   openFile, activateFile, newDocument, importDocument, closeView, displayName = '', url, signal: parentSignal}) {
   if (!instanceId || !sessionId || !files || typeof authorize !== 'function') throw TypeError('GridCraft requires explicit instance/session identity, Storage and authorization.');
@@ -102,7 +105,7 @@ export function mount({instanceId, sessionId, resource = null, imported = null, 
       return result?.status==='saved'?{status:'saved'}:{status:'paused',reason:'The native save did not confirm persistence.'};
     } catch(error) {
       return accountAutosaveRetry(error)
-        ?? {status:'paused',reason:error.message||'Verify the account file before retrying.'};
+        ?? {status:'paused',reason:operationFailureReason(error)};
     } finally {automaticSaving=false;}
   }
   function publish(observers,value) {
@@ -137,7 +140,7 @@ export function mount({instanceId, sessionId, resource = null, imported = null, 
   const target = () => ({instanceId,sessionId,documentId:currentDocument,resourceId:bindings.get(currentDocument)?.path || (currentDocument ? 'draft:'+currentDocument : null)});
   const inspect = () => ({...target(),...bindingSnapshot(),phase,loadError,requestedPath:loaded?null:resource?.path??null,disposed,dirty:dirty(),pendingSaves:pendingDocuments.size,
     documents:structuredClone(nativeState?.documents ?? []),files:[...bindings].map(([documentId,binding])=>({documentId,...binding})),recovery:recoveryState,needsCopy,autosave:accountAutosave.inspect()});
-  function notify(error) {if (!disposed && error.name !== 'AbortError') status.textContent = error.message;}
+  function notify(error) {if (!disposed && error.name !== 'AbortError') status.textContent = operationFailureReason(error);}
   function reply(type, fields) {if (!disposed) frame.contentWindow.postMessage({type,...fields},location.origin);}
   function completion(id) {
     if (!completions.has(id)) {let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});promise.catch(()=>{});completions.set(id,{promise,resolve,reject});}
@@ -233,7 +236,19 @@ export function mount({instanceId, sessionId, resource = null, imported = null, 
       status.textContent='Saved to your account: '+destination;
       done.resolve({status:'saved',path:destination,sha256:saved.sha256,committed:true,documentSave:message.documentSave});
       void settleSave().then(()=>checkpoint()).catch(notify);
-    }catch(error){if(serverConfirmed)error.outcome='unknown';if(!disposed){if(error.outcome==='unknown'||error.status===409)accountAutosave.pause(error.message);status.textContent=error.message+(error.outcome==='unknown'?' The server outcome is unknown; check the file before retrying.':'');try{await api().request('engine.execute',{command:'ui.hostSaveResult',params:{ticket:Number(id.slice('gridcraft-save-'.length)),outcome:error.outcome==='unknown'?'unknown':error.outcome==='cancelled'?'cancelled':error.status===409?'conflict':'failed'},doc:Number(documentId)});}catch{}}done.reject(error);}
+    }catch(error){
+      if(serverConfirmed)error.outcome='unknown';
+      if(!disposed){
+        const reason=operationFailureReason(error);
+        if(error.outcome==='unknown'||error.status===409)accountAutosave.pause(reason);
+        status.textContent=reason;
+        const outcome=error.outcome==='unknown'?'unknown':error.outcome==='cancelled'?'cancelled':error.status===409?'conflict':'failed';
+        try{
+          await api().request('engine.execute',{command:'ui.hostSaveResult',params:{ticket:Number(id.slice('gridcraft-save-'.length)),outcome},doc:Number(documentId)});
+        }catch{}
+      }
+      done.reject(error);
+    }
     finally {if(admitted)pendingDocuments.delete(documentId);if(!disposed)changed();}
   }
   async function saveDocument(asCopy=false) {

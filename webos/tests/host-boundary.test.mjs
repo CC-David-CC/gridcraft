@@ -219,7 +219,10 @@ test('timeouts, unexplained throttling and unknown writes pause actual Runtime A
   for(const error of [Object.assign(Error('File request timed out'),{status:408}),Object.assign(Error('Unexplained throttling'),{status:429}),
     Object.assign(Error('Transport interrupted'),{outcome:'unknown'})]){
     const clock=virtualClock(),f=await fixture({resource:accountResource,autosaveOptions:clock.options,write:async()=>{throw error;}});t.after(()=>f.view.dispose());
-    await clock.advance(10000);assert.equal(f.writes.length,1);assert.equal((await f.view.inspect()).autosave.state,'paused');
+    await clock.advance(10000);assert.equal(f.writes.length,1);
+    const autosave=(await f.view.inspect()).autosave;
+    assert.equal(autosave.state,'paused');
+    if(error.outcome==='unknown')assert.match(autosave.reason,/outcome is unknown; check the file before retrying/);
     await clock.advance(900000);assert.equal(f.writes.length,1);
   }
 });
