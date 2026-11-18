@@ -129,10 +129,17 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
                 ui.add_space(4.0);
                 // The formula field fills the rest, as tall as the bar.
                 let avail = ui.available_width() - 24.0;
-                let field = Rect::from_min_size(ui.cursor().min, vec2(avail, ui.available_height()));
+                let size = vec2(avail, ui.available_height());
+                let padding = vec2(6.0, 3.0);
+                // A hidden or very narrow web window can report no room for
+                // the field. Leave the edit intact for the next visible frame.
+                if size.x <= 2.0 * padding.x || size.y <= 2.0 * padding.y {
+                    return;
+                }
+                let field = Rect::from_min_size(ui.cursor().min, size);
                 ui.painter().rect_filled(field, 4.0, t.input_bg);
                 ui.painter().rect_stroke(field, 4.0, Stroke::new(1.0, t.input_border), StrokeKind::Inside);
-                let inner = field.shrink2(vec2(6.0, 3.0));
+                let inner = field.shrink2(padding);
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
                 let id = egui::Id::unique("gridcraft.formula_bar");
                 // A spill child shows its anchor's formula muted and read-only.
@@ -1089,6 +1096,22 @@ mod tests {
         let mut raw = egui::RawInput::default();
         raw.events.push(egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE });
         raw
+    }
+
+    #[test]
+    fn narrow_formula_bar_keeps_the_pending_edit() {
+        let ctx = egui::Context::default();
+        let mut session = gridcraft_engine::Session::new();
+        session.new_workbook();
+        let mut app = SheetApp::new(session, Default::default());
+        app.begin_edit(Some("=6*7".into()), true);
+        for width in [24.0, 440.0] {
+            let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(width, 300.0))), ..Default::default() };
+            let mut frame = ctx.run_ui(input, |ui| show(&mut app, ui));
+            frame.textures_delta.clear(); // This headless test has no renderer.
+            assert_eq!(app.editor.as_ref().unwrap().text, "=6*7");
+            assert_eq!(BarLayout::get(&ctx).field == Rect::NOTHING, width == 24.0);
+        }
     }
 
     #[test]

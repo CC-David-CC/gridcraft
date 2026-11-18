@@ -373,6 +373,9 @@ impl SheetApp {
         d.saved = Arc::new(Workbook::default());
         self.session.close_document(self.session.active_index());
         self.session.add_document(d);
+        // The initial blank may already have rendered. Install the recovered
+        // editor only after the per-window UI fields belong to the new window.
+        self.follow_active_window();
         let doc = self.session.active().ok_or("Recovery failed.")?;
         let id = doc.uid;
         self.editor = draft.map(|(sheet, cell, text)| {
@@ -526,6 +529,9 @@ mod tests {
         assert_eq!(app.session.active().unwrap().undo.len(), history);
         assert_eq!(app.host_state(), revision);
         let mut restored = hosted();
+        // Rendering the initial blank assigns its window to the UI fields.
+        restored.follow_active_window();
+        let initial_window = restored.ui_window().unwrap();
         let before = restored.host_state();
         let outcome = control(
             &mut restored,
@@ -534,6 +540,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(outcome, json!({"id":restored.session.active().unwrap().uid,"saved":false}));
+        assert_ne!(restored.ui_window(), Some(initial_window));
         assert_eq!(restored.editor.as_ref().unwrap().text, "=A1*7");
         assert!(restored.session.active().unwrap().is_dirty());
         restored.run("file.saveAs", json!({"path":"Documents/Recovered.xlsx"})).unwrap();
