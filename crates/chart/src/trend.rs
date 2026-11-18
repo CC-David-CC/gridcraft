@@ -105,7 +105,7 @@ pub(crate) fn fit_trendline(t: &Trendline, pts: &[(f64, f64)]) -> Option<TrendFi
         // A set intercept is LINEST(y - b, x, FALSE): the total sum of squares is not centred.
         ss_tot += if fixed.is_some() { (y - b0).powi(2) } else { (y - mean).powi(2) };
     }
-    let r2 = (ss_tot > 0.0 && ss_tot.is_finite() && ss_res.is_finite()).then(|| 1.0 - ss_res / ss_tot);
+    let r2 = if ss_tot > 0.0 && ss_tot.is_finite() && ss_res.is_finite() { Some(1.0 - ss_res / ss_tot) } else { None };
     Some(TrendFit { r2, ..fit })
 }
 
@@ -455,7 +455,7 @@ mod tests {
             ss_res += (y - fit.poly(x)).powi(2);
             ss_tot += if fixed.is_some() { (y - b0).powi(2) } else { (y - mean).powi(2) };
         }
-        let r2 = (ss_tot > 0.0 && ss_tot.is_finite() && ss_res.is_finite()).then(|| 1.0 - ss_res / ss_tot);
+        let r2 = if ss_tot > 0.0 && ss_tot.is_finite() && ss_res.is_finite() { Some(1.0 - ss_res / ss_tot) } else { None };
         Some(TrendFit { r2, ..fit })
     }
 

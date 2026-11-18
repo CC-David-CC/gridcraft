@@ -1774,8 +1774,8 @@ fn a_relative_recording_keeps_references_on_another_sheet() {
     set(&mut s, "D2", "=SUM(C3:C5)");
     s.execute("macro.record", json!({"stop": true, "name": "Both"})).unwrap();
     let steps = recorded(&mut s, "Both");
-    assert!(steps.contains(&"cell.set {\"cell\":\"C4\",\"input\":\"x\"}".to_string()), "{steps:?}");
-    assert!(steps.contains(&"cell.set {\"cell\":\"D2\",\"input\":\"=SUM(C3:C5)\"}".to_string()), "{steps:?}");
+    assert!(steps.iter().any(|value| value == "cell.set {\"cell\":\"C4\",\"input\":\"x\"}"), "{steps:?}");
+    assert!(steps.iter().any(|value| value == "cell.set {\"cell\":\"D2\",\"input\":\"=SUM(C3:C5)\"}"), "{steps:?}");
     // Played back on another block of Sheet1, it writes Two's cells.
     set(&mut s, "C4", "");
     set(&mut s, "D2", "");
@@ -1807,8 +1807,8 @@ fn a_step_that_names_another_sheet_keeps_its_references() {
     s.execute("cell.set", json!({"sheet": "Sheet1", "cell": "C4", "input": "90"})).unwrap();
     s.execute("macro.record", json!({"stop": true, "name": "Named"})).unwrap();
     let steps = recorded(&mut s, "Named");
-    assert!(steps.contains(&"cell.set {\"cell\":\"C4\",\"input\":\"x\",\"sheet\":\"Two\"}".to_string()), "{steps:?}");
-    assert!(steps.contains(&"cell.set {\"cell\":\"Input.cell(3,2)\",\"input\":\"90\",\"sheet\":\"Sheet1\"}".to_string()), "{steps:?}");
+    assert!(steps.iter().any(|value| value == "cell.set {\"cell\":\"C4\",\"input\":\"x\",\"sheet\":\"Two\"}"), "{steps:?}");
+    assert!(steps.iter().any(|value| value == "cell.set {\"cell\":\"Input.cell(3,2)\",\"input\":\"90\",\"sheet\":\"Sheet1\"}"), "{steps:?}");
 }
 
 #[test]
@@ -1873,7 +1873,7 @@ fn a_selection_of_several_areas_keeps_its_active_cell_as_it_is() {
     s.execute("home.bold", json!({})).unwrap();
     s.execute("macro.record", json!({"stop": true, "name": "Areas"})).unwrap();
     let steps = recorded(&mut s, "Areas");
-    assert!(steps.contains(&"selection.set {\"active\":\"E2\",\"range\":\"B2:C5,E2:E5\"}".to_string()), "{steps:?}");
+    assert!(steps.iter().any(|value| value == "selection.set {\"active\":\"E2\",\"range\":\"B2:C5,E2:E5\"}"), "{steps:?}");
     assert!(steps.iter().all(|st| !st.contains("\"active\":\"Input")), "{steps:?}");
 }
 
@@ -2269,7 +2269,7 @@ fn recorded_text_that_reads_as_a_token_plays_back_as_text() {
     assert_eq!(v(&s, "E3").display(), "400{{x");
     assert!(bold(&s, "H1"));
     let steps = recorded(&mut s, "Letters");
-    assert!(steps.contains(&"edit.goTo {\"reference\":{\"$text\":\"Output\"}}".to_string()), "{steps:?}");
+    assert!(steps.iter().any(|value| value == "edit.goTo {\"reference\":{\"$text\":\"Output\"}}"), "{steps:?}");
     assert!(
         steps.iter().any(|st| st.contains("=SUM({{Input.rows(2..).col(2)}})&\\\"{{{{x\\\"")),
         "the formula's own reference is still a token: {steps:?}"

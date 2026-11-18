@@ -48,6 +48,7 @@ pub struct Bridge {
     host: Rc<Host>,
     /// Names of the files handed to the host since the last frame.
     saved: Rc<RefCell<Vec<String>>>,
+    canvas: web_sys::EventTarget,
 }
 
 impl Bridge {
@@ -55,7 +56,7 @@ impl Bridge {
     /// `data-host="page"` on the canvas, an unframed `?host=parent` page (it stays the normal app
     /// with downloads), or a parent on another origin.
     pub fn detect(canvas: &web_sys::HtmlCanvasElement) -> Option<Self> {
-        Some(Self { host: Rc::new(Host::connect(APP, canvas)?), saved: Rc::default() })
+        Some(Self { host: Rc::new(Host::connect(APP, canvas)?), saved: Rc::default(), canvas: canvas.clone().into() })
     }
 
     /// Send saved and exported files to the host instead of downloading them, and hear files
@@ -78,6 +79,51 @@ impl Bridge {
         }
     }
 
+    pub fn configure_document_host(&self, app: &mut SheetApp) -> Result<(), String> {
+        let save = self.host.clone();
+        let request = self.clone();
+        let report = self.clone();
+        app.enable_document_host(
+            Box::new(move |value| {
+                save.post_identified_save(
+                    value.name,
+                    value.bytes,
+                    value.save_as,
+                    &craft_web_host::SaveContext {
+                        id: &value.id,
+                        document_id: &value.document,
+                        revision: &value.revision,
+                        operation: if value.save_as { "file.saveAs" } else { "file.save" },
+                        document_save: true,
+                    },
+                )
+            }),
+            Box::new(move |value| request.post_document_message("document-request", value)),
+            Box::new(move |value| report.post_document_message("document-state", value)),
+        )
+    }
+    fn post_document_message(&self, kind: &str, value: &serde_json::Value) -> Result<(), String> {
+        use wasm_bindgen::JsCast as _;
+        let message = js_sys::JSON::parse(&value.to_string()).map_err(|_| "Invalid document metadata")?;
+        let name = format!("gridcraft:{kind}");
+        js_sys::Reflect::set(&message, &"type".into(), &name.clone().into()).map_err(|_| "Could not encode document message")?;
+        if self.host.mode() == craft_web_host::Mode::Parent {
+            let window = web_sys::window().ok_or("No browser window")?;
+            let origin = window.location().origin().map_err(|_| "No browser origin")?;
+            window
+                .parent()
+                .map_err(|_| "No parent host")?
+                .ok_or("No parent host")?
+                .post_message(&message, &origin)
+                .map_err(|_| "Could not deliver document message".into())
+        } else {
+            let options = web_sys::CustomEventInit::new();
+            options.set_detail(&message);
+            let event = web_sys::CustomEvent::new_with_event_init_dict(&name, &options).map_err(|_| "Could not encode document event")?;
+            self.canvas.dispatch_event(event.unchecked_ref()).map(|_| ()).map_err(|_| "Could not deliver document event".into())
+        }
+    }
+
     pub fn post_ready(&self) {
         let _ = self.host.post_ready(env!("CARGO_PKG_VERSION"), false);
     }
@@ -90,6 +136,10 @@ impl Bridge {
     /// name it was saved as, and the host hears when unsaved changes appear or go away (the
     /// crate does not repeat a state it already reported).
     pub fn sync(&self, app: &mut SheetApp) {
+        if app.document_host.enabled {
+            app.report_host_state();
+            return;
+        }
         let saved = std::mem::take(&mut *self.saved.borrow_mut());
         if let Some(name) = saved.iter().rev().find(|name| is_workbook(name))
             && let Some(doc) = app.session.active_mut()

@@ -59,10 +59,20 @@ pub fn start() {
                         let _ = session.execute("file.new", serde_json::json!({"sample": "sales"}));
                     }
                     let mut services = services(inbox.clone(), cc.egui_ctx.clone());
-                    if let Some(bridge) = &app_bridge {
+                    if let Some(bridge) = &app_bridge
+                        && query_param("documentHost").as_deref() != Some("1")
+                    {
                         bridge.connect(&mut services, inbox.clone(), cc.egui_ctx.clone());
                     }
                     let mut app = SheetApp::new(session, services);
+                    let document_host = query_param("documentHost").as_deref() == Some("1");
+                    if document_host {
+                        app_bridge
+                            .as_ref()
+                            .ok_or_else(|| std::io::Error::other("A document host requires a same-origin bridge"))?
+                            .configure_document_host(&mut app)
+                            .map_err(std::io::Error::other)?;
+                    }
                     app.ui.system_theme = true;
                     // `?chrome=none|notitlebar|nofiletab`: a host that embeds the sheet in its own window and owns the files
                     // can leave the title bar and/or the File tab undrawn (`Chrome`, #1877). An unknown value keeps
@@ -88,7 +98,11 @@ pub fn start() {
                     }
                     // Preferences from an earlier visit (#1562), as the desktop app reads `ui.json`
                     // and `prefs.json`; a saved language replaces the browser's.
-                    let (stored_ui, stored_prefs) = (stored(crate::prefs::UI_KEY), stored(crate::prefs::PREFS_KEY));
+                    let profile = crate::prefs::Profile::new(document_host, query_param("hostProfile").as_deref());
+                    let (stored_ui, stored_prefs) = (
+                        profile.key(crate::prefs::UI_KEY).and_then(|key| stored(&key)),
+                        profile.key(crate::prefs::PREFS_KEY).and_then(|key| stored(&key)),
+                    );
                     crate::prefs::restore(&mut app, stored_ui.as_deref(), stored_prefs.as_deref());
                     let mut prefs = crate::prefs::PrefsSync::new(stored_ui, stored_prefs);
                     SheetApp::setup_context_for_language(&cc.egui_ctx, false, app.ui.language);
@@ -100,7 +114,7 @@ pub fn start() {
                         bridge.post_ready();
                     }
                     crate::api::install(&mut app, cc.egui_ctx.clone());
-                    Ok(Box::new(WebShell { app, inbox, bridge: app_bridge, prefs }))
+                    Ok(Box::new(WebShell { app, inbox, bridge: app_bridge, prefs, profile }))
                 }),
             )
             .await;
@@ -129,6 +143,7 @@ struct WebShell {
     inbox: Inbox,
     bridge: Option<crate::host::Bridge>,
     prefs: crate::prefs::PrefsSync,
+    profile: crate::prefs::Profile,
 }
 
 fn local_storage() -> Option<web_sys::Storage> {
@@ -143,7 +158,7 @@ fn stored(key: &str) -> Option<String> {
 impl eframe::App for WebShell {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
-        for f in dropped {
+        for f in dropped.into_iter().filter(|_| !self.app.document_host.enabled) {
             let inbox = self.inbox.clone();
             let ctx = ctx.clone();
             wasm_bindgen_futures::spawn_local(async move {
@@ -164,7 +179,9 @@ impl eframe::App for WebShell {
             match local_storage() {
                 Some(store) => {
                     for (key, json) in changed {
-                        if let Err(e) = store.set_item(key, &json) {
+                        if let Some(key) = self.profile.key(key)
+                            && let Err(e) = store.set_item(&key, &json)
+                        {
                             log::warn!("preferences: cannot save {key}: {e:?}");
                         }
                     }

@@ -6,6 +6,14 @@ use super::{
 impl SheetApp {
     /// Runs an engine command (or a UI command) and handles UI requests it makes.
     pub fn run(&mut self, id: &str, params: Json) -> Result<Json, String> {
+        if self.document_host.paused() {
+            return Err("Document is paused by its host.".into());
+        }
+        if self.document_host.enabled
+            && let Some(result) = self.host_command(id, &params)
+        {
+            return result;
+        }
         let r = self.run_command(id, params);
         // This copy leaves the system clipboard alone: note what it holds, so Paste can tell
         // that GridCraft's copy is newer while that text is still there.
@@ -373,6 +381,11 @@ impl SheetApp {
     }
 
     pub fn open_dialog(&mut self, name: &str, params: Json) {
+        // Backstage Browse reaches the same host-owned domain commands as keyboard Save As.
+        if self.document_host.enabled && matches!(name, "open" | "saveAs") {
+            self.run_or_alert(if name == "open" { "file.open" } else { "file.saveAs" }, params);
+            return;
+        }
         if let Err(e) = self.commit_text_box_edit() {
             self.message = Some(("Text Box".into(), clean_error(&e)));
             return;

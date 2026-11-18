@@ -47,7 +47,7 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
         }
         ui.horizontal_centered(|ui| {
             ui.add_space(TITLE_LEFT_PAD);
-            // AutoSave toggle (saves after each change when the workbook has a file).
+            // Hosted AutoSave is account scheduling; the standalone filesystem writer stays separate.
             ui.label(egui::RichText::new(app.ui.language.tr("AutoSave")).font(theme::ui_font(12.5)).color(t.text_dim));
             let on = app.ui.autosave;
             let (r, resp) = ui.allocate_exact_size(vec2(30.0, 16.0), Sense::click());
@@ -55,7 +55,12 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
             ui.painter().rect_stroke(r, 8.0, Stroke::new(1.0, if on { t.accent } else { t.text_dim }), StrokeKind::Inside);
             let knob = if on { pos2(r.right() - 8.0, r.center().y) } else { pos2(r.left() + 8.0, r.center().y) };
             ui.painter().circle_filled(knob, 5.0, if on { t.on_accent } else { t.text_dim });
-            if resp.on_hover_text(app.ui.language.tr("AutoSave: save after every change (workbooks saved to a file)")).clicked() {
+            let tooltip=if app.document_host.enabled {
+                "Account AutoSave: committed edits save after a short pause. Save this workbook once to name it. Browser recovery continues independently."
+            } else {
+                app.ui.language.tr("AutoSave: save after every change (workbooks saved to a file)")
+            };
+            if resp.on_hover_text(tooltip).clicked() {
                 app.toggle_autosave();
             }
             ui.add_space(6.0);

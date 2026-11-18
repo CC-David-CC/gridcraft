@@ -246,7 +246,17 @@ fn filter_commands(commands: Vec<Json>, search: Option<&str>) -> Vec<Json> {
 pub fn handle(app: &mut SheetApp, ctx: &egui::Context, method: &str, p: &Json) -> Outcome {
     let s = |k: &str| p.get(k).and_then(Json::as_str);
     let f = |k: &str| p.get(k).and_then(Json::as_f64).unwrap_or(0.0) as f32;
+    if app.document_host.paused()
+        && !matches!(
+            method,
+            "ui.state" | "ui.inspect" | "ui.documentHost" | "document.inspect" | "cell.get" | "sheet.read" | "selection.stats" | "engine.commands"
+        )
+    {
+        return err("Document is paused by its host.");
+    }
     let out = match method {
+        "ui.state" => ok(app.host_state()),
+        "ui.documentHost" => wrap(app.host_control(p)),
         "engine.execute" | "command" | "ui.menu.invoke" => {
             let Some(id) = s("command").or(s("id")) else { return err("missing `command`") };
             let params = p.get("params").cloned().unwrap_or(json!({}));

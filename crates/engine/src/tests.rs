@@ -5713,7 +5713,7 @@ fn paste_validation_covers_the_pasted_area_as_ranges() {
     s.execute("edit.copy", json!({"range": "A2"})).unwrap();
     s.execute("selection.set", json!({"range": "G1:G4"})).unwrap();
     s.execute("edit.paste", json!({})).unwrap();
-    assert!(validation_areas(&s).contains(&"G1:G4".to_string()));
+    assert!(validation_areas(&s).iter().any(|value| value == "G1:G4"));
 }
 
 /// Paste Special > Validation, checked against Excel 16.0: A1 has a list rule, A2 is blank with a
@@ -6573,7 +6573,7 @@ fn clearing_links_and_notes_records_their_cells() {
     s.execute("edit.clearHyperlinks", json!({"range": "C5"})).unwrap();
     s.execute("edit.clearComments", json!({"range": "D7"})).unwrap();
     let touched: Vec<String> = s.doc().unwrap().touched.clone().unwrap_or_default().into_iter().map(|(_, c)| c.a1()).collect();
-    assert!(touched.contains(&"C5".to_string()) && touched.contains(&"D7".to_string()), "{touched:?}");
+    assert!(touched.iter().any(|value| value == "C5") && touched.iter().any(|value| value == "D7"), "{touched:?}");
 }
 
 /// The locked-cell check for notes and links keeps Allow Edit Ranges: a range without a password

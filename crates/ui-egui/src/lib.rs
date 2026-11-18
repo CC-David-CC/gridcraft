@@ -75,6 +75,7 @@ pub use control::{ControlRequest, ControlResponse};
 
 mod app;
 mod clock;
+pub mod document_host;
 mod services;
 mod state;
 
@@ -235,6 +236,8 @@ pub struct Perf {
 }
 
 pub struct SheetApp {
+    /// Opt-in document ownership and confirmed-save boundary supplied by a host.
+    pub document_host: document_host::State,
     pub session: Session,
     pub ui: UiState,
     /// The window chrome to draw (see [`Chrome`]).

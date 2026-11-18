@@ -96,7 +96,7 @@ fn the_three_parts_agree_and_read_back() {
         assert!(shape.split("</v:shape>").next().unwrap().contains(&format!("ObjectType=\"{kind}\"")), "{id}");
     }
     assert!(vml.contains("id=\"_x0000_s1025\"") && vml.contains("ObjectType=\"Note\""), "the note is shape 1025");
-    assert!(!ids.contains(&"1025".to_string()));
+    assert!(ids.iter().all(|id| id != "1025"));
     for n in 1..=4 {
         assert!(types.contains(&format!("/xl/ctrlProps/ctrlProp{n}.xml")), "content type {n}");
     }

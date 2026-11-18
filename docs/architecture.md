@@ -1,6 +1,6 @@
 # Architecture
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-03 · **Change:** minor (shared CJK fallback baselines; earlier: Python mode in the formula bar; earlier: Python cells as data; earlier: equations: the `math` crate and the layout cache; earlier: recently used functions kept in the preferences; Function Library module; accent icons; earlier: the hidden names that hold macros) · **Target:** Microsoft Excel (Microsoft 365)
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-17 · **Change:** minor (opt-in WebOS document host; shared CJK fallback baselines; earlier: Python mode in the formula bar; earlier: Python cells as data; earlier: equations: the `math` crate and the layout cache; earlier: recently used functions kept in the preferences; Function Library module; accent icons; earlier: the hidden names that hold macros) · **Target:** Microsoft Excel (Microsoft 365)
 
 How GridCraft is built today. Rules for contributors are in [`AGENTS.md`](../AGENTS.md).
 
@@ -27,6 +27,18 @@ including tests, 2026-10-10.
 | L6 | `mcp` | ~1.4k | MCP server over stdio (hand-written JSON-RPC), headless or bridged to a running app |
 | L7 | `apps/gridcraft`, `apps/gridcraft-cli`, `apps/gridcraft-web` | ~2.2k | Desktop (eframe/wgpu), CLI (`info`, `convert`, `eval`, `cat`, `run`, `commands`, `functions`, `mcp`, `send`), web (WASM via trunk) |
 | — | `xtask` | — | `ci`, `parity`, `assets`, `layers`, `wasm`, `version`, `stats` |
+
+## Opt-in WebOS document ownership
+
+`ui-egui::document_host` owns identified prepared saves, confirmed native saved
+baselines, exact native document targets, native XLSX and pending cell/formula recovery and pause
+leases. The browser bridge uses `craft-web-host`'s identified-save transport;
+dispatch does not mark the workbook saved. Hosted file commands delegate document
+window ownership to Desktop. The app-owned `webos/` package composes public
+Accounts, Storage and Runtime interfaces without private cross-repository imports.
+The workbook and ordinary edit commands remain in Rust. See
+[the host contract, build recipe and qualification limits](../webos/README.md).
+This source integration does not itself qualify a browser release or deployment.
 
 ## Data flow
 

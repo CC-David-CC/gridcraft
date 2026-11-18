@@ -117,7 +117,7 @@ fn macros_round_trip_through_xlsx_and_json() {
     let bytes = crate::io::save_bytes(&wb, "book.xlsx").unwrap();
     let (raw, _) = gridcraft_xlsx::read_xlsx(&bytes).unwrap();
     let names = names_of(&raw);
-    assert!(names.contains(&"_gc_macro_0_0".to_string()), "{names:?}");
+    assert!(names.iter().any(|value| value == "_gc_macro_0_0"), "{names:?}");
     assert!(names.iter().filter(|n| n.starts_with("_gc_macro_1_")).count() >= 2, "{names:?}");
     assert!(raw.names.iter().all(|n| n.hidden));
     // Saving without macros writes no macro names, even if stale ones linger.
@@ -173,7 +173,7 @@ fn a_hidden_macro_name_this_build_did_not_write_is_kept() {
     wb.macros.push(sample_macro("Totals"));
     let (raw, _) = gridcraft_xlsx::read_xlsx(&crate::io::save_bytes(&wb, "book.xlsx").unwrap()).unwrap();
     let names = names_of(&raw);
-    assert!(names.contains(&"_gc_macro_index_0".to_string()) && names.contains(&"_gc_macro_0_0".to_string()), "{names:?}");
+    assert!(names.iter().any(|value| value == "_gc_macro_index_0") && names.iter().any(|value| value == "_gc_macro_0_0"), "{names:?}");
     let (back, warnings) = crate::io::open_bytes("book.xlsx", &crate::io::save_bytes(&wb, "book.xlsx").unwrap()).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     assert_eq!(back.macros, wb.macros);

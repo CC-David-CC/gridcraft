@@ -18,10 +18,15 @@ pub fn restore(app: &mut SheetApp, ui: Option<&str>, prefs: Option<&str>) {
     let readable = |s: &&str| s.len() <= MAX_STORED;
     if let Some(s) = ui.filter(readable)
         && let Ok(json) = serde_json::from_str::<serde_json::Value>(s)
-        && let Ok(state) = serde_json::from_value::<gridcraft_ui_egui::UiState>(json.clone())
+        && let Ok(mut state) = serde_json::from_value::<gridcraft_ui_egui::UiState>(json.clone())
     {
         // No usable saved language: keep the browser's, as the desktop keeps the system's.
         let language = gridcraft_ui_egui::i18n::saved_language(&json).unwrap_or(app.ui.language);
+        // A hosted profile's absent choice follows account AutoSave policy. An explicit
+        // account-scoped Off survives; standalone defaults remain unchanged.
+        if app.document_host.enabled && json.get("autosave").and_then(serde_json::Value::as_bool).is_none() {
+            state.autosave = true;
+        }
         app.ui = state.at_startup();
         app.ui.language = language;
     }
@@ -158,5 +163,61 @@ mod tests {
             assert_eq!(a.ui.language, Language::De);
             assert_eq!(a.session.prefs.enter_direction, "down");
         }
+    }
+}
+
+/// Hosted preferences never read the origin-global standalone profile.
+pub struct Profile {
+    hosted: bool,
+    namespace: Option<String>,
+}
+impl Profile {
+    pub fn new(hosted: bool, namespace: Option<&str>) -> Self {
+        Self {
+            hosted,
+            namespace: namespace
+                .filter(|s| !s.is_empty() && s.len() <= 256 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"_:-".contains(&b)))
+                .map(str::to_string),
+        }
+    }
+    pub fn key(&self, key: &str) -> Option<String> {
+        if !self.hosted { Some(key.into()) } else { self.namespace.as_ref().map(|id| format!("{key}.account.{id}")) }
+    }
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+    #[test]
+    fn hosted_autosave_defaults_on_and_respects_explicit_account_choice() {
+        fn hosted() -> SheetApp {
+            let mut app = SheetApp::new(gridcraft_engine::Session::new(), gridcraft_ui_egui::Services::default());
+            app.enable_document_host(Box::new(|_| Ok(())), Box::new(|_| Ok(())), Box::new(|_| Ok(()))).unwrap();
+            app
+        }
+        let mut app = hosted();
+        restore(&mut app, None, None);
+        assert!(app.ui.autosave);
+        restore(&mut app, Some(r#"{"dark":true}"#), None);
+        assert!(app.ui.autosave);
+        restore(&mut app, Some(r#"{"autosave":false}"#), None);
+        assert!(!app.ui.autosave);
+        let saved = serde_json::to_string(&app.ui).unwrap();
+        let mut next = hosted();
+        restore(&mut next, Some(&saved), None);
+        assert!(!next.ui.autosave);
+        let standalone = SheetApp::new(gridcraft_engine::Session::new(), gridcraft_ui_egui::Services::default());
+        assert!(!standalone.ui.autosave);
+    }
+    #[test]
+    fn hosted_profiles_never_fall_back_to_origin_global_preferences() {
+        for profile in [None, Some(""), Some("../account"), Some("account with spaces")] {
+            assert_eq!(Profile::new(true, profile).key(UI_KEY), None);
+        }
+        let a = Profile::new(true, Some("issuer_account_A"));
+        let b = Profile::new(true, Some("issuer_account_B"));
+        assert_ne!(a.key(UI_KEY), b.key(UI_KEY));
+        assert_ne!(a.key(UI_KEY), Some(UI_KEY.into()));
+        assert_eq!(Profile::new(false, None).key(UI_KEY), Some(UI_KEY.into()));
     }
 }

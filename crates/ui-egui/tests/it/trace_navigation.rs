@@ -58,7 +58,7 @@ fn ctrl_shift_bracket_walks_every_level() {
     key(&mut h, Key::OpenBracket, Modifiers::CTRL | Modifiers::SHIFT);
     let r = ranges(&h);
     assert!(
-        r.contains(&"A1".to_string()) && r.contains(&"B1".to_string()) && r.contains(&"C1".to_string()),
+        r.iter().any(|value| value == "A1") && r.iter().any(|value| value == "B1") && r.iter().any(|value| value == "C1"),
         "Ctrl+Shift+[ walks back through C1 to A1:B1, got {r:?}"
     );
 }
@@ -76,7 +76,7 @@ fn transitive_walk_reaches_formulas_late_in_a_wide_area() {
     h.state_mut().session.execute("selection.set", json!({"range": "AD1"})).unwrap();
     key(&mut h, Key::OpenBracket, Modifiers::CTRL | Modifiers::SHIFT);
     let r = ranges(&h);
-    assert!(r.contains(&"Z1".to_string()), "the formula late in the area is reached, got {r:?}");
+    assert!(r.iter().any(|value| value == "Z1"), "the formula late in the area is reached, got {r:?}");
     assert_eq!(r.len(), 2, "only the stored cells (AB1, Z1) are selected, no blanks, got {r:?}");
 }
 

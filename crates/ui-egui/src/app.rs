@@ -33,6 +33,7 @@ impl SheetApp {
             ui: UiState::default(),
             chrome: Chrome::default(),
             views: HashMap::new(),
+            document_host: Default::default(),
             editor: None,
             text_box_editor: None,
             dialog: None,
@@ -193,6 +194,9 @@ impl SheetApp {
     /// Lays out the whole window.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        if self.document_host.paused() {
+            return;
+        }
         if !self.fonts_ready || self.fonts_rebind {
             ctx.request_repaint();
             return;
