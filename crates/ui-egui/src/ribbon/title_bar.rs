@@ -33,8 +33,10 @@ pub(super) const TITLE_CONTROL_H: f32 = if MAC { 22.0 } else { 26.0 };
 /// Draws the title bar: drag/maximize, AutoSave toggle, Home/Save/Undo/Redo/More, search, share, comments and theme controls, with a centered truncated title.
 pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    let compact = ui.available_width() < 620.0;
     let ch = TITLE_CONTROL_H;
-    egui::Panel::top("title_bar").exact_size(TITLE_BAR_H).frame(egui::Frame::NONE.fill(t.window)).show(ui, |ui| {
+    let height = if compact { 44.0 } else { TITLE_BAR_H };
+    egui::Panel::top("title_bar").exact_size(height).frame(egui::Frame::NONE.fill(t.window)).show(ui, |ui| {
         let rect = ui.max_rect();
         // Dragging the empty title area moves the window.
         let bg = ui.interact(rect, ui.scope_id().with("drag_title"), Sense::click_and_drag());
@@ -64,16 +66,22 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
                 app.toggle_autosave();
             }
             ui.add_space(6.0);
+            if compact {
+                let save = ui.add_sized([56.0, height], egui::Button::new(app.ui.language.tr("Save")));
+                if save.clicked() {
+                    save_workbook(app);
+                }
+                more_commands(app, ui, &t, vec2(height, height), true);
+                theme_button(app, ui, &t, vec2(height, height));
+                return;
+            }
             let __k = icon_button(ui, Icon::Home, t.text_dim, "Home", vec2(26.0, ch));
             control_keytip(app, ui, &__k, "start");
             if __k.clicked() {
                 app.open_dialog("start", json!({}));
             }
-            if icon_button(ui, Icon::Save, t.text_dim, "Save", vec2(26.0, ch)).clicked()
-                // File operations must include the cell the user is still editing (as the File > Save menu item already does).
-                && app.commit_edit(0, 0, false, false)
-            {
-                app.run_or_alert("file.save", json!({}));
+            if icon_button(ui, Icon::Save, t.text_dim, "Save", vec2(26.0, ch)).clicked() {
+                save_workbook(app);
             }
             // The commands' own availability: there must be a step, and no undo group may be open on
             // the document (an action that spans several calls is still running).
@@ -106,23 +114,7 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
             if redo.clicked() && can_redo {
                 app.run_or_alert("edit.redo", json!({}));
             }
-            let more = icon_button(ui, Icon::More, t.text_dim, "More commands", vec2(26.0, ch));
-            egui::Popup::menu(&more).show(|ui| {
-                for (label, id) in [
-                    ("New Workbook", "file.new"),
-                    ("Open…", "file.open"),
-                    ("Save As…", "file.saveAs"),
-                    ("Sort A to Z", "data.sortAscending"),
-                    ("Calculate Now", "formulas.calculateNow"),
-                ] {
-                    if ui.button(label).clicked() {
-                        app.run_or_alert(id, json!({}));
-                    }
-                }
-                if ui.button("Print…").clicked() {
-                    app.print_now(json!({}));
-                }
-            });
+            more_commands(app, ui, &t, vec2(26.0, ch), false);
             let left_end = ui.min_rect().right();
             let right = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if app.window_controls {
@@ -152,16 +144,7 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
                 if __k.clicked() {
                     app.open_dialog("comments", json!({}));
                 }
-                // Quick light/dark switch (#194); right-click offers System as well. The same
-                // choice lives in File › Display theme and the View tab.
-                let lang = app.ui.language;
-                let theme = icon_button(ui, Icon::Appearance, t.text_dim, "Dark Mode", vec2(28.0, 26.0));
-                let dark = ui.ctx().theme() == egui::Theme::Dark;
-                theme.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, dark, lang.tr("Dark Mode")));
-                if theme.clicked() {
-                    act(app, "view.darkMode", json!({}));
-                }
-                theme.context_menu(|ui| theme_choices(app, ui));
+                theme_button(app, ui, &t, vec2(28.0, 26.0));
                 ui.min_rect().left()
             });
             // Centred title, cut with "…" so it never runs under the controls on either side.
@@ -171,6 +154,56 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
             paint_title(ui, rect.center(), &title, dirty, max_w, t.text);
         });
     });
+}
+
+fn save_workbook(app: &mut SheetApp) {
+    if app.commit_edit(0, 0, false, false) {
+        app.run_or_alert("file.save", json!({}));
+    }
+}
+
+fn more_commands(app: &mut SheetApp, ui: &mut Ui, t: &Tokens, size: egui::Vec2, compact: bool) {
+    let more = icon_button(ui, Icon::More, t.text_dim, "More commands", size);
+    egui::Popup::menu(&more).show(|ui| {
+        if compact {
+            for (label, id) in [("Undo", "edit.undo"), ("Redo", "edit.redo")] {
+                let enabled = match id {
+                    "edit.undo" => gridcraft_engine::cmd::can_undo(&app.session).is_ok(),
+                    _ => gridcraft_engine::cmd::can_redo(&app.session).is_ok(),
+                };
+                if ui.add_enabled(enabled, egui::Button::new(app.ui.language.tr(label))).clicked() {
+                    app.run_or_alert(id, json!({}));
+                }
+            }
+        }
+        for (label, id) in [
+            ("New Workbook", "file.new"),
+            ("Open…", "file.open"),
+            ("Save As…", "file.saveAs"),
+            ("Sort A to Z", "data.sortAscending"),
+            ("Calculate Now", "formulas.calculateNow"),
+        ] {
+            if ui.button(label).clicked() {
+                app.run_or_alert(id, json!({}));
+            }
+        }
+        if ui.button("Print…").clicked() {
+            app.print_now(json!({}));
+        }
+    });
+}
+
+fn theme_button(app: &mut SheetApp, ui: &mut Ui, t: &Tokens, size: egui::Vec2) {
+    // Quick light/dark switch (#194); right-click offers System as well. The same
+    // choice lives in File › Display theme and the View tab.
+    let lang = app.ui.language;
+    let theme = icon_button(ui, Icon::Appearance, t.text_dim, "Dark Mode", size);
+    let dark = ui.ctx().theme() == egui::Theme::Dark;
+    theme.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, dark, lang.tr("Dark Mode")));
+    if theme.clicked() {
+        act(app, "view.darkMode", json!({}));
+    }
+    theme.context_menu(|ui| theme_choices(app, ui));
 }
 
 /// Lay out the title truncated to fit `max_w` together with the unsaved marker (when `dirty`).
