@@ -18,7 +18,7 @@ export function mount({instanceId, sessionId, resource = null, imported = null, 
   if (!instanceId || !sessionId || !files || typeof authorize !== 'function') throw TypeError('GridCraft requires explicit instance/session identity, Storage and authorization.');
   const source = new URL(url, location.href); if (source.origin !== location.origin) throw Error('This GridCraft integration requires same-origin trusted code.');
   source.searchParams.set('host', 'parent'); source.searchParams.set('author', displayName); source.searchParams.set('documentHost', '1'); source.searchParams.set('control','1');
-  if (/^[A-Za-z0-9_:-]{1,256}$/.test(profileId)) source.searchParams.set('hostProfile', profileId);
+  if (!files.temporary && /^[A-Za-z0-9_:-]{1,256}$/.test(profileId)) source.searchParams.set('hostProfile', profileId);
   const element = document.createElement('div'), frame = document.createElement('iframe'), statusBar = document.createElement('footer'), status = document.createElement('div'), recoveryStatus = document.createElement('div'), retryButton = document.createElement('button');
   element.className = 'webos-gridcraft'; frame.title = 'GridCraft document'; frame.inert = true; frame.allow = 'clipboard-read; clipboard-write';
   status.className = 'webos-gridcraft-status'; status.setAttribute('role', 'status'); recoveryStatus.className = 'webos-gridcraft-recovery'; recoveryStatus.setAttribute('role', 'status');
@@ -66,7 +66,7 @@ export function mount({instanceId, sessionId, resource = null, imported = null, 
     request: (method,params={}) => method==='engine.execute' ? nativeRequest(value,'ui.documentHost',params) :
       method==='document.inspect' ? nativeRequest(value,'ui.documentHost',{command:'document.inspect',params,doc:params.doc}) : nativeRequest(value,method,params)
   }; };
-  const dialogs = createDialogs({element, signal: abort.signal, check, onChange: () => changed(),
+  const dialogs = createDialogs({element, temporary: files.temporary === true, signal: abort.signal, check, onChange: () => changed(),
     onClose(kind){if(kind==='path'&&!disposed&&loaded&&!paused){try{focusEditor();}catch(error){notify(error);}}}
   });
   const activeState = () => nativeState?.documents.find(document => document.id === currentDocument);
@@ -76,10 +76,10 @@ export function mount({instanceId, sessionId, resource = null, imported = null, 
   let lastBinding = '';
   const accountAutosave=createAccountAutosave({save:automaticSave,onState(value){
     if(disposed)return;
-    if(value.state==='retrying')status.textContent='Account AutoSave will retry a confirmed no-write failure. Local recovery remains separate.';
-    if(value.state==='waiting'&&activeState()?.autosaveEnabled===false)status.textContent='Account AutoSave is off. Local recovery continues independently.';
-    if(value.state==='waiting'&&loaded&&!bindings.has(currentDocument)&&activeState()?.autosaveEnabled===true)status.textContent='Save this workbook once to enable account AutoSave. Local recovery continues independently.';
-    if(value.state==='paused'&&value.reason)status.textContent='Account AutoSave paused: '+value.reason;
+    if(value.state==='retrying')status.textContent=(files.temporary ? 'AutoSave in this tab will retry.' : 'Account AutoSave will retry a confirmed no-write failure. Local recovery remains separate.');
+    if(value.state==='waiting'&&activeState()?.autosaveEnabled===false)status.textContent=(files.temporary ? 'AutoSave is off in this tab.' : 'Account AutoSave is off. Local recovery continues independently.');
+    if(value.state==='waiting'&&loaded&&!bindings.has(currentDocument)&&activeState()?.autosaveEnabled===true)status.textContent=(files.temporary ? 'Save this workbook once to enable AutoSave in this tab.' : 'Save this workbook once to enable account AutoSave. Local recovery continues independently.');
+    if(value.state==='paused'&&value.reason)status.textContent=(files.temporary ? 'AutoSave paused: ' : 'Account AutoSave paused: ')+value.reason;
   }});
   const automaticIdentity=()=>loaded&&bindings.has(currentDocument)?JSON.stringify([profileId,instanceId,sessionId,currentDocument,bindings.get(currentDocument).path]):null;
   function observeAutosave(){
@@ -98,7 +98,7 @@ export function mount({instanceId, sessionId, resource = null, imported = null, 
       await checkpoint().catch(()=>{});check();
       if(signal.aborted||automaticIdentity()!==identity||activeState()?.revision!==version)return {status:'busy'};
       const binding=bindings.get(currentDocument);if(!binding)return {status:'busy'};
-      if(globalThis.navigator?.onLine===false)return {status:'retry',reason:'Browser reports offline; no account write was attempted.'};
+      if(!files.temporary && globalThis.navigator?.onLine===false)return {status:'retry',reason:'Browser reports offline; no account write was attempted.'};
       automaticSaving=true;
       const result=await nativeCommand('file.save',{path:binding.path,background:true});check();
       if(result?.autosave==='busy')return {status:'busy'};
@@ -227,13 +227,13 @@ export function mount({instanceId, sessionId, resource = null, imported = null, 
       } else if(!destination){destination=await dialogs.path(original?.path||'Documents/'+message.name);check();if(destination===null){const e=Error('Save cancelled.');e.outcome='cancelled';throw e;}}
       if(!/[.]xlsx$/i.test(destination))throw Error('GridCraft saves XLSX workbooks; choose an .xlsx filename.');
       if(needsCopy&&destination===original?.path)throw Error('The saved base changed or could not be verified. Use Save As to keep this recovered copy.');
-      status.textContent='Saving to your account…';
+      status.textContent=(files.temporary ? 'Saving in this tab…' : 'Saving to your account…');
       const saved=await files.write(destination,new Blob([message.bytes]),destination===original?.path?original.sha256:null,{signal:abort.signal});serverConfirmed=true;check();
       if(!digest(saved?.sha256))throw Error('Server save confirmation is invalid.');
       await api().request('engine.execute',{command:'ui.hostSaveResult',params:{ticket:Number(id.slice('gridcraft-save-'.length)),outcome:'saved',path:destination},doc:Number(documentId)});check();
       if(message.documentSave){bindings.set(documentId,{path:destination,sha256:saved.sha256});needsCopy=false;changed();}
       if(!automaticSaving)accountAutosave.confirmed({identity:automaticIdentity()});
-      status.textContent='Saved to your account: '+destination;
+      status.textContent=(files.temporary ? 'Saved in this tab: ' : 'Saved to your account: ')+destination;
       done.resolve({status:'saved',path:destination,sha256:saved.sha256,committed:true,documentSave:message.documentSave});
       void settleSave().then(()=>checkpoint()).catch(notify);
     }catch(error){
@@ -327,13 +327,13 @@ export function mount({instanceId, sessionId, resource = null, imported = null, 
           const bytes=opened.data instanceof Blob?new Uint8Array(await opened.data.arrayBuffer()):opened.data;check();
           const result=await openNative({command:'file.open',params:{path:resource.path,data:base64(bytes)}});check();
           if(!Number.isSafeInteger(result.id))throw Error('GridCraft did not identify the opened document.');
-          currentDocument=String(result.id);bindings.set(currentDocument,{path:resource.path,sha256:opened.sha256});status.textContent='Opened account file: '+resource.path;
+          currentDocument=String(result.id);bindings.set(currentDocument,{path:resource.path,sha256:opened.sha256});status.textContent=(files.temporary ? 'Opened in this tab: ' : 'Opened account file: ')+resource.path;
         }else if(imported){
           if(!validName(imported.name)||typeof imported.data!=='string'||imported.data.length>Math.ceil(MAX_FILE/3)*4)throw Error('Invalid document import.');
           await openNative({command:'file.open',params:{path:imported.name,data:imported.data,unsaved:true}});check();
-          status.textContent='Imported document; use Save As to save it to your account.';
+          status.textContent=(files.temporary ? 'Imported workbook. Use Save As to keep it in this tab.' : 'Imported document; use Save As to save it to your account.');
         }else{
-          await api().request('engine.execute',{command:'file.new',params:{template}});check();status.textContent='New document; not saved to your account.';
+          await api().request('engine.execute',{command:'file.new',params:{template}});check();status.textContent=(files.temporary ? 'New temporary workbook. Save to Files in this tab.' : 'New document; not saved to your account.');
         }
       }
       await api().execute('ui.backstage',{value:false});check();await refresh();loaded=true;phase='ready';frame.inert=false;clearTimeout(startup);changed();readyResolve();

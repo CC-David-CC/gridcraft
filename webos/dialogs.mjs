@@ -6,7 +6,7 @@ export function canonicalPath(value, {root = false} = {}) {
   return value;
 }
 
-export function createDialogs({element, signal, check, onChange = () => {}, onClose = () => {}}) {
+export function createDialogs({element, temporary = false, signal, check, onChange = () => {}, onClose = () => {}}) {
   let active = null;
   function ask(title, build) {
     check(); if (active) return Promise.reject(Error('Finish the current GridCraft dialog first.'));
@@ -31,7 +31,7 @@ export function createDialogs({element, signal, check, onChange = () => {}, onCl
     path(initial) {
       return ask('Save As', ({node,body,button,finish}) => {
         node.dataset.kind = 'path'; const label = document.createElement('label'), input = document.createElement('input'), error = document.createElement('p');
-        label.textContent = 'Account file path'; input.value = initial; input.required = true; input.setAttribute('aria-label','Account file path'); error.setAttribute('role','alert'); label.append(input); body.append(label,error);
+        label.textContent = temporary ? 'File path in this tab' : 'Account file path'; input.value = initial; input.required = true; input.setAttribute('aria-label',label.textContent); error.setAttribute('role','alert'); label.append(input); body.append(label,error);
         const save = () => { try {finish(canonicalPath(input.value));} catch(e) {error.textContent=e.message;} };
         input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();save();}});
         button('Save',null,save); button('Cancel',null);
@@ -52,12 +52,12 @@ export function createDialogs({element, signal, check, onChange = () => {}, onCl
       });
     },
     open(files, directory='') {
-      return ask('Open account document', ({node,body,button,finish,valid}) => {
+      return ask(temporary ? 'Open from this tab' : 'Open account document', ({node,body,button,finish,valid}) => {
         node.dataset.kind='open'; const breadcrumb=document.createElement('p'), up=document.createElement('button'), list=document.createElement('div'), status=document.createElement('p');
         up.type='button';up.textContent='Up';status.setAttribute('role','status');list.className='webos-gridcraft-file-list';body.append(breadcrumb,up,list,status);let generation=0, current='';
         async function load(path) {
           const version=++generation;try {
-            canonicalPath(path,{root:true});check();status.textContent='Loading account files…';up.disabled=true;
+            canonicalPath(path,{root:true});check();status.textContent=temporary ? 'Loading files…' : 'Loading account files…';up.disabled=true;
             const result=await files.list(path);check();if(!valid()||version!==generation)return;
             current=path;breadcrumb.textContent='My files'+(path?' / '+path:'');up.disabled=!path;list.replaceChildren();
             for(const entry of result.entries){
