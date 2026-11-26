@@ -32,7 +32,15 @@ export function createDialogs({element, temporary = false, signal, check, onChan
       return ask('Save As', ({node,body,button,finish}) => {
         node.dataset.kind = 'path'; const label = document.createElement('label'), input = document.createElement('input'), error = document.createElement('p');
         label.textContent = temporary ? 'File path in this tab' : 'Account file path'; input.value = initial; input.required = true; input.setAttribute('aria-label',label.textContent); error.setAttribute('role','alert'); label.append(input); body.append(label,error);
-        const save = () => { try {finish(canonicalPath(input.value));} catch(e) {error.textContent=e.message;} };
+        const save = () => {
+          try {
+            const path = canonicalPath(input.value);
+            const name = path.split('/').at(-1);
+            finish(name.includes('.') ? path : path + '.xlsx');
+          } catch (e) {
+            error.textContent = e.message;
+          }
+        };
         input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();save();}});
         button('Save',null,save); button('Cancel',null);
       });

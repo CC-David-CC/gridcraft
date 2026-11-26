@@ -1,2 +1,20 @@
 .webos-gridcraft{display:flex;flex-direction:column;width:100%;height:100%;min-height:0;background:#e6e6e6}.webos-gridcraft iframe{display:block;border:0;flex:1;width:100%;min-height:0}.webos-gridcraft-statusbar{display:flex;align-items:center;flex:none;gap:12px;min-width:0;padding:6px 10px;border-top:1px solid #bbb;background:#f5f4f1;font:12px/16px sans-serif;white-space:nowrap;overflow:hidden}.webos-gridcraft-status,.webos-gridcraft-recovery{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.webos-gridcraft-status{flex:1 1 0}.webos-gridcraft-recovery{flex:0 1 auto;max-width:70%}.webos-gridcraft-status:empty,.webos-gridcraft-recovery:empty{display:none}.webos-gridcraft-close{font:14px sans-serif;border:1px solid #888;border-radius:6px;max-width:90vw;padding:20px}.webos-gridcraft-close h2{font-size:17px}.webos-gridcraft-close button{font:inherit;padding:7px 14px;margin:5px;min-height:36px}.webos-gridcraft-close::backdrop{background:#0005}
 .webos-gridcraft-dialog{width:min(520px,90vw);max-height:80vh;overflow:auto}.webos-gridcraft-dialog label{display:flex;flex-direction:column;gap:8px}.webos-gridcraft-dialog input{font:inherit;padding:8px;min-width:0}.webos-gridcraft-file-list{display:flex;flex-direction:column;max-height:40vh;overflow:auto}.webos-gridcraft-file-list button{text-align:left;overflow-wrap:anywhere}
+
+.webos-gridcraft { background: var(--desktop-surface, #e6e6e6); }
+.webos-gridcraft > .webos-gridcraft-statusbar { margin: 0; }
+.webos-gridcraft-statusbar:not(:has(> :not(:empty))) { display: none; }
+
+@media (max-width: 600px) {
+  .webos-gridcraft-statusbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: .25rem;
+  }
+  .webos-gridcraft-status, .webos-gridcraft-recovery {
+    flex: auto;
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
